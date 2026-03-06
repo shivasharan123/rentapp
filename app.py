@@ -1,9 +1,11 @@
-from flask import Flask, request
+from flask import Flask, request, session
 from twilio.twiml.messaging_response import MessagingResponse
 import database
 import os
 
+# Set a secret key for session management
 app = Flask(__name__)
+app.secret_key = os.urandom(24)
 
 # --- Configuration ---
 WIFI_SSID = "Building_Guest"
@@ -21,7 +23,8 @@ def whatsapp_reply():
     # 1. Get request details
     raw_from = request.values.get('From', '')
     sender_phone = get_sender_phone(raw_from)
-    incoming_msg = request.values.get('Body', '').lower().strip()
+    incoming_msg = request.values.get('Body', '').strip() # Keep case for names
+    incoming_msg_lower = incoming_msg.lower()
     num_media = int(request.values.get('NumMedia', '0'))
     
     # 2. Database Lookup
@@ -59,59 +62,109 @@ def handle_tenant(resp, tenant, msg, num_media, conn):
     name = tenant['name']
     apt = tenant['apartment_number']
     rent_amt = tenant['rent_amount']
+    msg_lower = msg.lower()
 
     # 1. Image Upload
     if num_media > 0:
         resp.message(f"📸 Thanks {name}! I've received your payment screenshot. Pending manager approval.")
         return
 
-    # 2. Map Button Clicks to logic
-    # (Users might tap the button text exactly)
-    if msg == 'pay rent':
+    # 2. Interactive Logic
+    if msg_lower == 'pay rent':
         body = f"💰 **Rent Due:** ₹{rent_amt}\n\nSelect a payment method:"
-        # Sub-menu buttons
-        msg_resp = resp.message(body)
-        msg_resp.body(body) # Redundant but safe
-        # Note: Twilio Python helper for generic buttons is tricky without Content API templates.
-        # We will use simple numbered list for reliability in Sandbox, 
-        # OR generic formatting if your account supports it.
-        # For now, let's stick to text-based buttons simulation or try to trigger standard response.
-        # Since 'Buttons' requires template registration in Prod, we will fallback to text prompt if buttons fail.
-        # But user specifically asked for buttons.
+        # Sending text for now as true buttons need templates in prod
+        resp.message(body)
+        resp.message("Reply *UPI* or *Cash*")
         return
 
-    # 3. Logic Handling
-    if 'rent' in msg or 'pay' in msg:
-        resp.message(f"💰 Rent for Apt {apt}: ₹{rent_amt}\n\nTo pay, scan the building QR code.\nThen upload the screenshot here.")
-    
-    elif 'wifi' in msg:
+    elif msg_lower == 'wifi password':
         resp.message(f"📶 **WiFi Details:**\nNetwork: `{WIFI_SSID}`\nPassword: `{WIFI_PASS}`")
 
-    elif 'maintenance' in msg or 'issue' in msg:
+    elif msg_lower == 'report issue':
         resp.message("🔧 **Report Issue:**\nPlease reply with a description of the problem (e.g., 'Leaking tap') and attach a photo.")
 
+    elif msg_lower == 'my history':
+         # Show last 3 payments
+        cur = database.execute_query(conn, "SELECT * FROM transactions WHERE tenant_id = ? ORDER BY date DESC LIMIT 3", (tenant['id'],))
+        txs = cur.fetchall()
+        if not txs:
+            resp.message("No payment history found.")
+        else:
+            history = "📜 **Recent Payments:**\n"
+            for tx in txs:
+                status_icon = "✅" if tx['status'] == 'VERIFIED' else "⏳"
+                history += f"{status_icon} {tx['date'][:10]}: ₹{tx['amount']} ({tx['type']})\n"
+            resp.message(history)
+
     else:
-        # MAIN MENU (Tenant)
-        # We use a standard text menu, but formatted to look like a list.
-        # True "Clickable" buttons in WhatsApp API require templates approved by Meta.
-        # Since we are in dev/sandbox, we simulate "Link Style" by using easy keywords.
-        
+        # MAIN MENU (Tenant) - Using Numbered List to simulate buttons in Sandbox
+        # In Production with Templates, these would be clickable buttons.
         menu = f"👋 **Welcome Home, {name}!**\n"
-        menu += "Tap a command below:\n\n"
-        menu += "💰 *Pay Rent*\n"
-        menu += "📸 *Upload Screenshot*\n"
-        menu += "🔧 *Report Issue*\n"
-        menu += "📶 *WiFi Password*"
+        menu += "Tap an option below (or type it):\n\n"
+        menu += "1. Pay Rent\n"
+        menu += "2. Upload Screenshot\n"
+        menu += "3. Report Issue\n"
+        menu += "4. WiFi Password\n"
+        menu += "5. My History"
         
-        # In a real deployed app with Templates, we would send a JSON payload here.
-        # For now, we guide them to type the keyword.
         resp.message(menu)
 
-# --- Manager Logic ---
+# --- Manager Logic (Conversational) ---
+
+# Dictionary to store state: {phone_number: {'step': 'name', 'data': {...}}}
+# In production, use Redis or Database. For MVP, memory is fine (resets on restart).
+manager_state = {} 
 
 def handle_manager(resp, msg, conn, sender_phone):
-    
-    if 'pending' in msg:
+    state = manager_state.get(sender_phone)
+    msg_lower = msg.lower()
+
+    # --- STATE MACHINE for Add Tenant ---
+    if state:
+        step = state['step']
+        data = state['data']
+
+        if step == 'name':
+            data['name'] = msg
+            state['step'] = 'phone'
+            resp.message("📱 Enter Tenant's **Phone Number** (e.g., +91...):")
+            return
+        
+        elif step == 'phone':
+            data['phone'] = msg
+            state['step'] = 'apt'
+            resp.message("🏠 Enter **Apartment Number**:")
+            return
+
+        elif step == 'apt':
+            data['apt'] = msg
+            state['step'] = 'rent'
+            resp.message("💰 Enter **Monthly Rent** (Amount only):")
+            return
+
+        elif step == 'rent':
+            try:
+                rent = float(msg)
+                # Save to DB
+                database.execute_query(conn,
+                    "INSERT INTO tenants (name, phone_number, apartment_number, rent_amount, role) VALUES (?, ?, ?, ?, 'TENANT')",
+                    (data['name'], data['phone'], data['apt'], rent)
+                )
+                conn.commit()
+                resp.message(f"✅ **Success!**\nAdded {data['name']} (Apt {data['apt']}) with rent ₹{rent}.")
+            except ValueError:
+                resp.message("❌ Invalid amount. Please enter a number (e.g., 15000).")
+                return # Keep state, retry
+            except Exception as e:
+                resp.message(f"❌ Error: {str(e)}")
+            
+            # Clear state
+            del manager_state[sender_phone]
+            return
+
+    # --- STANDARD COMMANDS ---
+
+    if msg_lower == 'pending approvals' or msg_lower == 'pending':
         cur = database.execute_query(conn, 
             """SELECT t.id, t.amount, t.type, ten.name 
                FROM transactions t 
@@ -138,21 +191,31 @@ def handle_manager(resp, msg, conn, sender_phone):
         except:
             resp.message("❌ Usage: `approve [ID]`")
 
-    elif 'status' in msg:
+    elif msg_lower == 'system status' or msg_lower == 'status':
         cur = database.execute_query(conn, "SELECT COUNT(*) as count FROM tenants WHERE role='TENANT'")
         count = cur.fetchone()['count']
         resp.message(f"📊 **System Status:**\nActive Tenants: {count}")
 
+    elif msg_lower == 'add tenant' or msg_lower == 'add':
+        # Start State Machine
+        manager_state[sender_phone] = {'step': 'name', 'data': {}}
+        resp.message("➕ **New Tenant Setup**\n\nFirst, what is the Tenant's **Name**?")
+
     else:
         # MANAGER MENU
-        # Simulating "Link Style"
+        # Using numbered list which simulates options nicely in Sandbox
         menu = "👋 **Manager Mode**\n"
         menu += "Select an action:\n\n"
-        menu += "📋 *Pending Approvals*\n"  # User can type "Pending"
-        menu += "📊 *System Status*\n"      # User can type "Status"
-        menu += "➕ *Add Tenant*"           # User can type "Add Tenant"
+        menu += "1. Pending Approvals\n"
+        menu += "2. System Status\n"
+        menu += "3. Add Tenant" 
         
-        resp.message(menu)
+        # Hint logic to match keywords if they type "1"
+        if msg == '1': handle_manager(resp, 'pending', conn, sender_phone)
+        elif msg == '2': handle_manager(resp, 'status', conn, sender_phone)
+        elif msg == '3': handle_manager(resp, 'add tenant', conn, sender_phone)
+        else:
+            resp.message(menu)
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
