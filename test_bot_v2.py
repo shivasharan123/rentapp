@@ -18,9 +18,9 @@ class RentAppTestV2(unittest.TestCase):
             'From': 'whatsapp:+1234567890',
             'Body': 'help'
         })
-        self.assertIn(b"I can help with:", response.data)
-        self.assertIn(b"Type 'rent'", response.data)
-        self.assertIn(b"Send a screenshot", response.data)
+        self.assertIn(b"Commands:", response.data)
+        self.assertIn(b"rent", response.data)
+        self.assertIn(b"screenshot", response.data)
 
     def test_image_upload(self):
         # Test image upload acknowledgement
@@ -29,8 +29,8 @@ class RentAppTestV2(unittest.TestCase):
             'Body': '',
             'NumMedia': '1'  # Simulate 1 image attached
         })
-        self.assertIn(b"I've received your screenshot", response.data)
-        self.assertIn(b"verify the payment shortly", response.data)
+        self.assertIn(b"payment screenshot", response.data)
+        self.assertIn(b"Pending manager approval", response.data)
 
 if __name__ == '__main__':
     unittest.main()
