@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tic-Tac-Toe</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #2c3e50;
+            color: white;
+            margin: 0;
+        }
+
+        h1 { margin-bottom: 20px; }
+
+        .status {
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            height: 30px;
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(3, 100px);
+            grid-template-rows: repeat(3, 100px);
+            gap: 10px;
+        }
+
+        .cell {
+            width: 100px;
+            height: 100px;
+            background-color: #34495e;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .cell:hover { background-color: #3d566e; }
+
+        .cell.x { color: #e74c3c; } /* Red for X */
+        .cell.o { color: #3498db; } /* Blue for O */
+
+        .cell.taken { cursor: not-allowed; }
+
+        .restart-btn {
+            margin-top: 30px;
+            padding: 10px 20px;
+            font-size: 1rem;
+            background-color: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        .restart-btn:active { transform: scale(0.95); }
+
+        /* XML Data Display (Hidden by default, shown for demo) */
+        #xml-display {
+            margin-top: 20px;
+            background: #222;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #f1c40f;
+            display: none; /* Toggle this to block to see XML */
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Tic-Tac-Toe</h1>
+    <div class="status" id="status">Player X's Turn</div>
+
+    <div class="board" id="board">
+        <div class="cell" data-index="0"></div>
+        <div class="cell" data-index="1"></div>
+        <div class="cell" data-index="2"></div>
+        <div class="cell" data-index="3"></div>
+        <div class="cell" data-index="4"></div>
+        <div class="cell" data-index="5"></div>
+        <div class="cell" data-index="6"></div>
+        <div class="cell" data-index="7"></div>
+        <div class="cell" data-index="8"></div>
+    </div>
+
+    <button class="restart-btn" onclick="restartGame()">Restart Game</button>
+
+    <!-- Simulating XML Storage -->
+    <div id="xml-display"></div>
+
+    <script>
+        const statusDisplay = document.getElementById('status');
+        const cells = document.querySelectorAll('.cell');
+        let gameActive = true;
+        let currentPlayer = "X";
+        let gameState = ["", "", "", "", "", "", "", "", ""];
+
+        const winningConditions = [
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+            [0, 4, 8], [2, 4, 6]             // Diagonals
+        ];
+
+        function handleCellClick(clickedCellEvent) {
+            const clickedCell = clickedCellEvent.target;
+            const clickedCellIndex = parseInt(clickedCell.getAttribute('data-index'));
+
+            if (gameState[clickedCellIndex] !== "" || !gameActive) {
+                return;
+            }
+
+            handleCellPlayed(clickedCell, clickedCellIndex);
+            handleResultValidation();
+        }
+
+        function handleCellPlayed(clickedCell, clickedCellIndex) {
+            gameState[clickedCellIndex] = currentPlayer;
+            clickedCell.textContent = currentPlayer;
+            clickedCell.classList.add(currentPlayer.toLowerCase(), 'taken');
+        }
+
+        function handleResultValidation() {
+            let roundWon = false;
+            for (let i = 0; i <= 7; i++) {
+                const winCondition = winningConditions[i];
+                let a = gameState[winCondition[0]];
+                let b = gameState[winCondition[1]];
+                let c = gameState[winCondition[2]];
+                if (a === '' || b === '' || c === '') {
+                    continue;
+                }
+                if (a === b && b === c) {
+                    roundWon = true;
+                    break;
+                }
+            }
+
+            if (roundWon) {
+                statusDisplay.textContent = `Player ${currentPlayer} Wins! 🎉`;
+                gameActive = false;
+                return;
+            }
+
+            let roundDraw = !gameState.includes("");
+            if (roundDraw) {
+                statusDisplay.textContent = "Game Ended in a Draw! 🤝";
+                gameActive = false;
+                return;
+            }
+
+            handlePlayerChange();
+        }
+
+        function handlePlayerChange() {
+            currentPlayer = currentPlayer === "X" ? "O" : "X";
+            statusDisplay.textContent = `Player ${currentPlayer}'s Turn`;
+        }
+
+        function restartGame() {
+            gameActive = true;
+            currentPlayer = "X";
+            gameState = ["", "", "", "", "", "", "", "", ""];
+            statusDisplay.textContent = "Player X's Turn";
+            cells.forEach(cell => {
+                cell.textContent = "";
+                cell.classList.remove('x', 'o', 'taken');
+            });
+        }
+
+        cells.forEach(cell => cell.addEventListener('click', handleCellClick));
+    </script>
+</body>
+</html>

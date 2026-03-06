@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+body { font-family: sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 20px; }
+h1, h2, h3 { color: #2c3e50; }
+h1 { border-bottom: 2px solid #3498db; padding-bottom: 10px; }
+h2 { border-bottom: 1px solid #bdc3c7; padding-bottom: 5px; margin-top: 30px; }
+ul { margin-bottom: 20px; }
+li { margin-bottom: 5px; }
+table { border-collapse: collapse; width: 100%; margin: 20px 0; }
+th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+th { background-color: #f2f2f2; }
+.note { background-color: #f9f9f9; border-left: 4px solid #3498db; padding: 15px; margin: 20px 0; }
+</style>
+</head>
+<body>
+
+<h1>🏢 Smart Rent & Maintenance Tracker</h1>
+<h2>Automated WhatsApp-Based Property Management System</h2>
+
+<hr>
+
+<h3>1. Executive Summary</h3>
+<p><strong>Goal:</strong> Streamline rent collection and maintenance tracking for a 60-unit rental portfolio.<br>
+<strong>Solution:</strong> A "No-App" experience for tenants using <strong>WhatsApp</strong> as the primary interface, powered by an <strong>AI Backend</strong> to automate bookkeeping and reconciliation.<br>
+<strong>Key Benefit:</strong> Eliminates manual data entry, centralizes records, and provides a real-time financial snapshot.</p>
+
+<hr>
+
+<h3>2. Core Workflows</h3>
+
+<h4>A. Rent Collection (The "Happy Path")</h4>
+<ul>
+<li><strong>Tenant Action:</strong> Sends a UPI/Bank Transfer screenshot to the Building WhatsApp Number.</li>
+<li><strong>System Action:</strong>
+    <ol>
+    <li><strong>AI Analysis:</strong> Extracts Amount, Date, Transaction ID (UTR), and Sender Name from the image.</li>
+    <li><strong>Validation:</strong> Checks against the tenant's due amount.</li>
+    <li><strong>Ledger Update:</strong> Records the payment in the database.</li>
+    </ol>
+</li>
+<li><strong>Outcome:</strong> Tenant receives an instant "Payment Received" receipt. Manager dashboard updates automatically.</li>
+</ul>
+
+<h4>B. Cash Payments (The "Handshake")</h4>
+<ul>
+<li><strong>Scenario:</strong> Tenant pays cash to the manager.</li>
+<li><strong>Manager Action:</strong> Messages the bot: <em>"Collected 15k cash from Apt 101."</em></li>
+<li><strong>Verification:</strong> Bot messages the <strong>Tenant</strong> to confirm: <em>"Manager reported collecting ₹15,000. Confirm? [Yes/No]"</em></li>
+<li><strong>Outcome:</strong> Ledger updates only after Tenant confirmation, preventing disputes.</li>
+</ul>
+
+<h4>C. Maintenance Requests</h4>
+<ul>
+<li><strong>Tenant Action:</strong> Sends a photo/text: <em>"Leaking tap in bathroom."</em></li>
+<li><strong>System Action:</strong>
+    <ol>
+    <li>AI categorizes it as a <strong>Maintenance Ticket</strong>.</li>
+    <li>Assigns a Priority (Low/High).</li>
+    <li>Notifies the Manager with a summary.</li>
+    </ol>
+</li>
+<li><strong>Outcome:</strong> Organized list of open issues instead of scattered chat history.</li>
+</ul>
+
+<hr>
+
+<h3>3. Fraud Prevention (Guard Rails)</h3>
+<p>How we ensure financial integrity against fake screenshots or duplicate uploads.</p>
+
+<table>
+<tr>
+<th>Layer</th>
+<th>Mechanism</th>
+<th>Protection Against</th>
+</tr>
+<tr>
+<td><strong>L1: UTR Check</strong></td>
+<td>Database stores every Unique Transaction Reference (UTR).</td>
+<td><strong>Duplicate Uploads:</strong> Preventing the same screenshot from being used twice.</td>
+</tr>
+<tr>
+<td><strong>L2: Pending State</strong></td>
+<td>Payments enter a <code>VERIFICATION_PENDING</code> state first.</td>
+<td><strong>Premature Confirmation:</strong> Acknowledges receipt without legal confirmation of funds.</td>
+</tr>
+<tr>
+<td><strong>L3: Admin Approval</strong></td>
+<td>Daily "Reconciliation Report" sent to Manager.</td>
+<td><strong>Fake Screenshots:</strong> Manager verifies the day's total against the actual Bank Statement before final approval.</td>
+</tr>
+</table>
+
+<hr>
+
+<h3>4. Technical Architecture</h3>
+<p>The "Stack" required to build and run this system.</p>
+
+<ul>
+<li><strong>User Interface:</strong> <strong>WhatsApp Business API</strong> (via Twilio or Meta Direct).</li>
+<li><strong>The "Brain" (Logic):</strong> <strong>Python / Node.js</strong> backend running on the cloud.</li>
+<li><strong>Intelligence (AI):</strong> <strong>OpenAI GPT-4o</strong> or <strong>Google Gemini</strong> (for reading screenshots & understanding text).</li>
+<li><strong>The "Ledger" (Database):</strong> <strong>Supabase (PostgreSQL)</strong>. Secure, relational database for financial records.</li>
+<li><strong>Hosting:</strong> <strong>Railway</strong> or <strong>Render</strong> (keeps the bot running 24/7).</li>
+</ul>
+
+<hr>
+
+<h3>5. Data Structure (The Schema)</h3>
+<p>A glimpse into how data is organized.</p>
+
+<ul>
+<li><strong>Tenants Table:</strong> Name, Phone, Apartment ID, Rent Amount, Current Balance.</li>
+<li><strong>Transactions Table:</strong> Date, Amount, Type (UPI/Cash), UTR Number, Screenshot Evidence, Status (Pending/Verified).</li>
+<li><strong>Maintenance Table:</strong> Ticket ID, Issue Description, Photo URL, Status (Open/Fixed), Cost.</li>
+</ul>
+
+<hr>
+
+<h3>6. Manager Dashboard (How You Manage)</h3>
+<p>You don't need to read raw database rows.</p>
+<ul>
+<li><strong>Option A (Simple):</strong> <strong>Daily WhatsApp Summary</strong> (<em>"Today: collected ₹1.5L from 12 tenants. 3 pending maintenance requests."</em>)</li>
+<li><strong>Option B (Visual):</strong> A web-based <strong>Admin Panel</strong> (using Supabase or Streamlit) to view:
+    <ul>
+    <li>🔴 Tenants who haven't paid yet.</li>
+    <li>🟢 Total Revenue this month.</li>
+    <li>🔧 Open Maintenance Tickets.</li>
+    </ul>
+</li>
+</ul>
+
+<hr>
+
+<h3>7. Next Steps</h3>
+<ol>
+<li><strong>Setup:</strong> Acquire <strong>Twilio</strong> (WhatsApp) and <strong>OpenAI/Gemini</strong> (AI) API keys.</li>
+<li><strong>Build:</strong> Deploy the Database Schema and Python Backend.</li>
+<li><strong>Test:</strong> Run a pilot with 1-2 friendly tenants.</li>
+<li><strong>Launch:</strong> Onboard all 60 units.</li>
+</ol>
+
+</body>
+</html>
