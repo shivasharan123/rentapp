@@ -45,7 +45,8 @@ def init_db():
             name TEXT NOT NULL,
             apartment_number TEXT NOT NULL,
             rent_amount REAL NOT NULL,
-            balance REAL DEFAULT 0
+            balance REAL DEFAULT 0,
+            role TEXT DEFAULT 'TENANT' -- 'TENANT' or 'MANAGER'
         )
     ''')
 
@@ -94,13 +95,23 @@ def add_test_data():
     
     if c.fetchone() is None:
         query_insert = f'''
-            INSERT INTO tenants (phone_number, name, apartment_number, rent_amount, balance)
-            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder})
+            INSERT INTO tenants (phone_number, name, apartment_number, rent_amount, balance, role)
+            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 'TENANT')
         '''
         c.execute(query_insert, ('+1234567890', 'Test Tenant', '101', 15000, 0))
         print("Test tenant added: Test Tenant (Apt 101)")
     else:
         print("Test tenant already exists.")
+
+    # Check if test manager exists
+    c.execute(query_check, ('+919876543210',))
+    if c.fetchone() is None:
+        query_insert = f'''
+            INSERT INTO tenants (phone_number, name, apartment_number, rent_amount, balance, role)
+            VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, 'MANAGER')
+        '''
+        c.execute(query_insert, ('+919876543210', 'Manager', 'OFFICE', 0, 0))
+        print("Test manager added: Manager (+919876543210)")
     
     conn.commit()
     conn.close()
