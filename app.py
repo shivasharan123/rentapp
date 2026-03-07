@@ -3,6 +3,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from twilio.rest import Client
 import database
 import os
+from datetime import datetime
 
 # Set a secret key for session management
 app = Flask(__name__)
@@ -186,9 +187,6 @@ def handle_manager(resp, msg, conn, sender_phone, bot_whatsapp_id):
             # Send Outbound Message
             if twilio_client:
                 reminder_body = f"👋 **Friendly Reminder:**\nHi {target['name']}! Rent for this month is due (₹{target['rent_amount']}).\nPlease pay via UPI or Cash soon to avoid late fees."
-                
-                # 'From' must be the Twilio Sandbox/Production number (extracted from incoming request 'To' usually, but here hardcoded/env var is better)
-                # We'll use the 'To' from the incoming request as the 'From' for the outbound message.
                 bot_number = request.values.get('To') 
                 
                 twilio_client.messages.create(
@@ -234,9 +232,80 @@ def handle_manager(resp, msg, conn, sender_phone, bot_whatsapp_id):
             resp.message("❌ Usage: `approve [ID]`")
 
     elif msg_lower == 'system status' or msg_lower == 'status':
-        cur = database.execute_query(conn, "SELECT COUNT(*) as count FROM tenants WHERE role='TENANT'")
-        count = cur.fetchone()['count']
-        resp.message(f"📊 **System Status:**\nActive Tenants: {count}")
+        # 1. Get all active tenants
+        cur = database.execute_query(conn, "SELECT id, name, apartment_number, rent_amount FROM tenants WHERE role='TENANT'")
+        all_tenants = cur.fetchall()
+        total_tenants = len(all_tenants)
+        
+        # 2. Get verified payments for current month
+        # Using SQLite/Postgres compatible date check (simple string match for YYYY-MM)
+        current_month = datetime.now().strftime('%Y-%m')
+        
+        # Note: In SQLite date is string. In Postgres it's timestamp.
+        # This query works best if date column is TEXT (ISO8601).
+        # If TIMESTAMP type, we need extraction function.
+        # For cross-compatibility in MVP, we fetch relevant txs and filter in Python.
+        
+        cur = database.execute_query(conn, "SELECT tenant_id, amount FROM transactions WHERE status='VERIFIED'")
+        all_txs = cur.fetchall()
+        
+        paid_tenants = set()
+        total_collected = 0.0
+        
+        for tx in all_txs:
+            # tx['date'] might be datetime object or string depending on driver
+            # Let's assume we filter all for now or check date if available in row
+            # Fetch date too
+            pass 
+
+        # Let's do a cleaner query for current month
+        # Since we have `database.execute_query`, let's try a standard SQL approach
+        # casting date to text to match YYYY-MM
+        
+        # Simplified logic:
+        # Get IDs of tenants who paid > 0 this month
+        paid_ids = set()
+        
+        # We need to act differently for SQLite vs Postgres for date functions
+        # Hack: Just fetch all verified transactions and filter in Python (safe for <1000 records)
+        cur = database.execute_query(conn, "SELECT tenant_id, amount, date FROM transactions WHERE status='VERIFIED'")
+        txs = cur.fetchall()
+        
+        for tx in txs:
+            # Handle date string vs datetime object
+            d = tx['date']
+            if isinstance(d, str):
+                d_str = d[:7] # YYYY-MM
+            else:
+                d_str = d.strftime('%Y-%m')
+            
+            if d_str == current_month:
+                paid_ids.add(tx['tenant_id'])
+                total_collected += tx['amount']
+
+        # 3. Calculate Lists
+        pending_list = []
+        for t in all_tenants:
+            if t['id'] not in paid_ids:
+                pending_list.append(f"🔴 {t['apartment_number']} - {t['name']} (₹{t['rent_amount']})")
+
+        paid_count = len(paid_ids)
+        pending_count = total_tenants - paid_count
+        
+        # 4. Format Output
+        report = f"📊 **{datetime.now().strftime('%B')} Rent Report**\n\n"
+        report += f"✅ **Paid:** {paid_count}/{total_tenants} (₹{total_collected:,.0f})\n"
+        report += f"❌ **Pending:** {pending_count} Units\n\n"
+        
+        if pending_list:
+            report += "**Defaulters List:**\n"
+            report += "\n".join(pending_list[:10]) # Show top 10 to avoid limit
+            if len(pending_list) > 10:
+                report += f"\n...and {len(pending_list)-10} more."
+        else:
+            report += "🎉 All rents collected!"
+
+        resp.message(report)
 
     elif msg_lower == 'add tenant' or msg_lower == 'add':
         # Start State Machine
@@ -248,7 +317,7 @@ def handle_manager(resp, msg, conn, sender_phone, bot_whatsapp_id):
         menu = "👋 **Manager Mode**\n"
         menu += "Select an action:\n\n"
         menu += "1. Pending Approvals\n"
-        menu += "2. System Status\n"
+        menu += "2. System Status (Rent Roll)\n"
         menu += "3. Add Tenant\n" 
         menu += "4. Send Reminder (Type `remind [Apt]`)"
         
