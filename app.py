@@ -1,5 +1,6 @@
 from flask import Flask, request, session
 from twilio.twiml.messaging_response import MessagingResponse
+from twilio.rest import Client
 import database
 import os
 
@@ -10,6 +11,16 @@ app.secret_key = os.urandom(24)
 # --- Configuration ---
 WIFI_SSID = "Building_Guest"
 WIFI_PASS = "WelcomeHome2024"
+
+# Twilio Client (For outbound reminders)
+TWILIO_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+twilio_client = None
+if TWILIO_SID and TWILIO_TOKEN:
+    try:
+        twilio_client = Client(TWILIO_SID, TWILIO_TOKEN)
+    except:
+        print("Warning: Twilio Client init failed")
 
 def get_sender_phone(raw_from):
     if raw_from.startswith("whatsapp:"):
@@ -49,7 +60,7 @@ def whatsapp_reply():
     role = tenant['role'] if 'role' in tenant.keys() else 'TENANT'
     
     if role == 'MANAGER':
-        handle_manager(resp, incoming_msg, conn, sender_phone)
+        handle_manager(resp, incoming_msg, conn, sender_phone, raw_from) # Pass raw_from for bot number
     else:
         handle_tenant(resp, tenant, incoming_msg, num_media, conn)
 
@@ -97,8 +108,7 @@ def handle_tenant(resp, tenant, msg, num_media, conn):
             resp.message(history)
 
     else:
-        # MAIN MENU (Tenant) - Using Numbered List to simulate buttons in Sandbox
-        # In Production with Templates, these would be clickable buttons.
+        # MAIN MENU (Tenant)
         menu = f"👋 **Welcome Home, {name}!**\n"
         menu += "Tap an option below (or type it):\n\n"
         menu += "1. Pay Rent\n"
@@ -111,11 +121,9 @@ def handle_tenant(resp, tenant, msg, num_media, conn):
 
 # --- Manager Logic (Conversational) ---
 
-# Dictionary to store state: {phone_number: {'step': 'name', 'data': {...}}}
-# In production, use Redis or Database. For MVP, memory is fine (resets on restart).
 manager_state = {} 
 
-def handle_manager(resp, msg, conn, sender_phone):
+def handle_manager(resp, msg, conn, sender_phone, bot_whatsapp_id):
     state = manager_state.get(sender_phone)
     msg_lower = msg.lower()
 
@@ -162,6 +170,40 @@ def handle_manager(resp, msg, conn, sender_phone):
             del manager_state[sender_phone]
             return
 
+    # --- REMINDER LOGIC ---
+    if msg_lower.startswith('remind '):
+        try:
+            target_apt = msg.split('remind ')[1].strip()
+            
+            # Find tenant
+            cur = database.execute_query(conn, "SELECT * FROM tenants WHERE apartment_number = ?", (target_apt,))
+            target = cur.fetchone()
+            
+            if not target:
+                resp.message(f"❌ No tenant found in Apt {target_apt}")
+                return
+            
+            # Send Outbound Message
+            if twilio_client:
+                reminder_body = f"👋 **Friendly Reminder:**\nHi {target['name']}! Rent for this month is due (₹{target['rent_amount']}).\nPlease pay via UPI or Cash soon to avoid late fees."
+                
+                # 'From' must be the Twilio Sandbox/Production number (extracted from incoming request 'To' usually, but here hardcoded/env var is better)
+                # We'll use the 'To' from the incoming request as the 'From' for the outbound message.
+                bot_number = request.values.get('To') 
+                
+                twilio_client.messages.create(
+                    from_=bot_number,
+                    body=reminder_body,
+                    to=f"whatsapp:{target['phone_number']}"
+                )
+                resp.message(f"✅ Reminder sent to {target['name']} ({target['phone_number']}).")
+            else:
+                resp.message("❌ Twilio Client not configured. Check env vars.")
+
+        except Exception as e:
+            resp.message(f"❌ Error sending reminder: {str(e)}")
+        return
+
     # --- STANDARD COMMANDS ---
 
     if msg_lower == 'pending approvals' or msg_lower == 'pending':
@@ -203,17 +245,17 @@ def handle_manager(resp, msg, conn, sender_phone):
 
     else:
         # MANAGER MENU
-        # Using numbered list which simulates options nicely in Sandbox
         menu = "👋 **Manager Mode**\n"
         menu += "Select an action:\n\n"
         menu += "1. Pending Approvals\n"
         menu += "2. System Status\n"
-        menu += "3. Add Tenant" 
+        menu += "3. Add Tenant\n" 
+        menu += "4. Send Reminder (Type `remind [Apt]`)"
         
         # Hint logic to match keywords if they type "1"
-        if msg == '1': handle_manager(resp, 'pending', conn, sender_phone)
-        elif msg == '2': handle_manager(resp, 'status', conn, sender_phone)
-        elif msg == '3': handle_manager(resp, 'add tenant', conn, sender_phone)
+        if msg == '1': handle_manager(resp, 'pending', conn, sender_phone, bot_whatsapp_id)
+        elif msg == '2': handle_manager(resp, 'status', conn, sender_phone, bot_whatsapp_id)
+        elif msg == '3': handle_manager(resp, 'add tenant', conn, sender_phone, bot_whatsapp_id)
         else:
             resp.message(menu)
 
