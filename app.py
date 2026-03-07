@@ -53,6 +53,32 @@ def whatsapp_reply():
 
     # 4. Unknown User Logic
     if not tenant:
+        # --- Allow SETUP command for new managers ---
+        if incoming_msg_lower.startswith("setup"):
+            try:
+                parts = incoming_msg.split() # Split by space
+                # Format: SETUP Name Apt Rent
+                # E.g.: SETUP Shiva 101 15000
+                if len(parts) >= 4:
+                    new_name = parts[1]
+                    new_apt = parts[2]
+                    new_rent = float(parts[3])
+                    
+                    # Insert as MANAGER
+                    database.execute_query(conn,
+                        "INSERT INTO tenants (name, phone_number, apartment_number, rent_amount, role) VALUES (?, ?, ?, ?, 'MANAGER')",
+                        (new_name, sender_phone, new_apt, new_rent)
+                    )
+                    conn.commit()
+                    resp.message(f"✅ **Welcome Manager {new_name}!**\nSystem initialized. You can now use Manager commands.")
+                else:
+                    resp.message("❌ Format: `SETUP <Name> <Apt> <Rent>`\nExample: `SETUP Shiva 101 15000`")
+            except Exception as e:
+                resp.message(f"❌ Error during setup: {str(e)}")
+            
+            conn.close()
+            return str(resp), 200, {'Content-Type': 'application/xml'}
+
         conn.close()
         resp.message(f"🚫 Sorry, I don't recognize the number {sender_phone}. Please contact the Property Manager.")
         return str(resp), 200, {'Content-Type': 'application/xml'}
