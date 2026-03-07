@@ -9,6 +9,13 @@ from datetime import datetime
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
+# Ensure DB is initialized on startup (for Render ephemeral environment)
+try:
+    database.init_db()
+    print("DEBUG: Database initialized.")
+except Exception as e:
+    print(f"DEBUG: DB Init Failed: {e}")
+
 # --- Configuration ---
 WIFI_SSID = "Building_Guest"
 WIFI_PASS = "WelcomeHome2024"
