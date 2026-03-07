@@ -62,6 +62,7 @@ def whatsapp_reply():
     if not tenant:
         # --- Allow SETUP command for new managers ---
         if incoming_msg_lower.startswith("setup"):
+            print("DEBUG: Executing SETUP logic")
             try:
                 parts = incoming_msg.split() # Split by space
                 # Format: SETUP Name Apt Rent
@@ -81,14 +82,17 @@ def whatsapp_reply():
                 else:
                     resp.message("❌ Format: `SETUP <Name> <Apt> <Rent>`\nExample: `SETUP Shiva 101 15000`")
             except Exception as e:
+                print(f"DEBUG: Setup Error: {e}")
                 resp.message(f"❌ Error during setup: {str(e)}")
             
             conn.close()
             return str(resp), 200, {'Content-Type': 'application/xml'}
-
-        conn.close()
-        resp.message(f"🚫 Sorry, I don't recognize the number {sender_phone}. Please contact the Property Manager.")
-        return str(resp), 200, {'Content-Type': 'application/xml'}
+        
+        else:
+            print("DEBUG: Unknown user fallback")
+            conn.close()
+            resp.message(f"🚫 Sorry, I don't recognize the number {sender_phone}. Please contact the Property Manager.")
+            return str(resp), 200, {'Content-Type': 'application/xml'}
     
     # 5. Route by Role
     role = tenant['role'] if 'role' in tenant.keys() else 'TENANT'
