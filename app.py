@@ -47,13 +47,20 @@ def whatsapp_reply():
     print(f"DEBUG: Msg from {sender_phone}: '{incoming_msg}'")
 
     # 2. Database Lookup
+    # Ensure tables exist (quick hack for debugging, remove later)
+    # database.init_db() 
+    
     conn = database.get_db_connection()
-    cur = database.execute_query(
-        conn, 
-        "SELECT * FROM tenants WHERE phone_number = ?", 
-        (sender_phone,)
-    )
-    tenant = cur.fetchone()
+    try:
+        cur = database.execute_query(
+            conn, 
+            "SELECT * FROM tenants WHERE phone_number = ?", 
+            (sender_phone,)
+        )
+        tenant = cur.fetchone()
+    except Exception as e:
+        print(f"DB Error: {e}")
+        tenant = None # Fallback if table missing
 
     # 3. Start Response
     resp = MessagingResponse()
@@ -91,7 +98,8 @@ def whatsapp_reply():
         else:
             print("DEBUG: Unknown user fallback")
             conn.close()
-            resp.message(f"🚫 Sorry, I don't recognize the number {sender_phone}. Please contact the Property Manager.")
+            # Explicitly return what the bot sees
+            resp.message(f"🚫 DEBUG: You sent: '{incoming_msg}'\nStarts with 'setup'? {incoming_msg_lower.startswith('setup')}")
             return str(resp), 200, {'Content-Type': 'application/xml'}
     
     # 5. Route by Role
