@@ -55,7 +55,7 @@ def whatsapp_reply():
     if not tenant:
         conn.close()
         resp.message(f"🚫 Sorry, I don't recognize the number {sender_phone}. Please contact the Property Manager.")
-        return str(resp)
+        return str(resp), 200, {'Content-Type': 'application/xml'}
     
     # 5. Route by Role
     role = tenant['role'] if 'role' in tenant.keys() else 'TENANT'
@@ -66,15 +66,69 @@ def whatsapp_reply():
         handle_tenant(resp, tenant, incoming_msg, num_media, conn)
 
     conn.close()
-    return str(resp)
+    
+    # Ensure correct content type for Twilio
+    return str(resp), 200, {'Content-Type': 'application/xml'}
 
 # --- Tenant Logic ---
+
+tenant_state = {}
 
 def handle_tenant(resp, tenant, msg, num_media, conn):
     name = tenant['name']
     apt = tenant['apartment_number']
     rent_amt = tenant['rent_amount']
+    # Ensure we get the correct phone column or pass it in
+    sender_phone = tenant['phone_number'] 
     msg_lower = msg.lower()
+
+    # --- STATE MACHINE for Payment ---
+    state = tenant_state.get(sender_phone)
+    
+    if state:
+        step = state.get('step')
+        data = state.get('data', {})
+        
+        if step == 'payment_method':
+            if msg_lower == 'upi' or msg_lower == 'cash':
+                data['method'] = msg_lower.upper()
+                state['step'] = 'amount'
+                # Update state in dict
+                tenant_state[sender_phone] = state
+                
+                resp.message(f"💰 You selected **{data['method']}**.\n\nPlease enter the **Amount Paid** (e.g., {rent_amt}):")
+                return
+            elif msg_lower in ['cancel', 'stop', 'exit']:
+                del tenant_state[sender_phone]
+                resp.message("❌ Payment cancelled.")
+                return
+            else:
+                resp.message("❌ Invalid option. Please reply with **UPI** or **Cash** (or 'cancel').")
+                return
+
+        elif step == 'amount':
+            try:
+                amount = float(msg)
+                
+                # Insert Transaction
+                # Use standard SQL. For SQLite 'date' is string usually, but we can pass object.
+                # Just use ISO format for safety.
+                now_str = datetime.now().isoformat()
+                
+                database.execute_query(conn,
+                    "INSERT INTO transactions (tenant_id, amount, type, status, date) VALUES (?, ?, ?, 'PENDING', ?)",
+                    (tenant['id'], amount, data['method'], now_str)
+                )
+                conn.commit()
+                
+                resp.message(f"✅ **Payment Recorded!**\nReceived ₹{amount} via {data['method']}.\nWaiting for manager verification.")
+                
+                # Clear state
+                del tenant_state[sender_phone]
+                return
+            except ValueError:
+                resp.message("❌ Invalid amount. Please enter a number (e.g., 15000).")
+                return
 
     # 1. Image Upload
     if num_media > 0:
@@ -82,20 +136,25 @@ def handle_tenant(resp, tenant, msg, num_media, conn):
         return
 
     # 2. Interactive Logic
-    if msg_lower == 'pay rent':
+    # Start payment flow
+    if (msg_lower == 'pay rent' or msg == '1') and not state:
+        # Start State Machine
+        tenant_state[sender_phone] = {'step': 'payment_method', 'data': {}}
         body = f"💰 **Rent Due:** ₹{rent_amt}\n\nSelect a payment method:"
-        # Sending text for now as true buttons need templates in prod
         resp.message(body)
         resp.message("Reply *UPI* or *Cash*")
         return
 
-    elif msg_lower == 'wifi password':
-        resp.message(f"📶 **WiFi Details:**\nNetwork: `{WIFI_SSID}`\nPassword: `{WIFI_PASS}`")
+    elif msg_lower == 'upload screenshot' or msg == '2':
+        resp.message("📸 Please tap the 📎 icon to attach your payment screenshot.")
 
-    elif msg_lower == 'report issue':
+    elif msg_lower == 'report issue' or msg == '3':
         resp.message("🔧 **Report Issue:**\nPlease reply with a description of the problem (e.g., 'Leaking tap') and attach a photo.")
 
-    elif msg_lower == 'my history':
+    elif msg_lower == 'wifi password' or msg == '4':
+        resp.message(f"📶 **WiFi Details:**\nNetwork: `{WIFI_SSID}`\nPassword: `{WIFI_PASS}`")
+
+    elif msg_lower == 'my history' or msg == '5':
          # Show last 3 payments
         cur = database.execute_query(conn, "SELECT * FROM transactions WHERE tenant_id = ? ORDER BY date DESC LIMIT 3", (tenant['id'],))
         txs = cur.fetchall()
