@@ -28,6 +28,11 @@ def get_sender_phone(raw_from):
         return raw_from.split(":")[1]
     return raw_from
 
+@app.route("/", methods=['GET'])
+def health_check():
+    """Simple health check to verify app is running."""
+    return "Rent App is Live! 🚀", 200
+
 @app.route("/whatsapp", methods=['POST'])
 def whatsapp_reply():
     """Respond to incoming WhatsApp messages."""
