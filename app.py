@@ -44,6 +44,8 @@ def whatsapp_reply():
     incoming_msg_lower = incoming_msg.lower()
     num_media = int(request.values.get('NumMedia', '0'))
     
+    print(f"DEBUG: Msg from {sender_phone}: '{incoming_msg}'")
+
     # 2. Database Lookup
     conn = database.get_db_connection()
     cur = database.execute_query(
