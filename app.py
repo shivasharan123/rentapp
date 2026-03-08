@@ -86,9 +86,12 @@ def whatsapp_reply():
                     new_apt = parts[2]
                     new_rent = float(parts[3])
                     
-                    # Insert as MANAGER
+                    # Insert as MANAGER (UPSERT to handle existing tenants promoting themselves)
                     database.execute_query(conn,
-                        "INSERT INTO tenants (name, phone_number, apartment_number, rent_amount, role) VALUES (?, ?, ?, ?, 'MANAGER')",
+                        """INSERT INTO tenants (name, phone_number, apartment_number, rent_amount, role) 
+                           VALUES (?, ?, ?, ?, 'MANAGER')
+                           ON CONFLICT (phone_number) 
+                           DO UPDATE SET role = 'MANAGER', name = EXCLUDED.name, apartment_number = EXCLUDED.apartment_number, rent_amount = EXCLUDED.rent_amount""",
                         (new_name, sender_phone, new_apt, new_rent)
                     )
                     conn.commit()
