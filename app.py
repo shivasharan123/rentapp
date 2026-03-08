@@ -268,13 +268,21 @@ def handle_manager(resp, msg, conn, sender_phone, bot_whatsapp_id):
         elif step == 'rent':
             try:
                 rent = float(msg)
-                # Save to DB
-                database.execute_query(conn,
-                    "INSERT INTO tenants (name, phone_number, apartment_number, rent_amount, role) VALUES (?, ?, ?, ?, 'TENANT')",
-                    (data['name'], data['phone'], data['apt'], rent)
-                )
-                conn.commit()
-                resp.message(f"✅ **Success!**\nAdded {data['name']} (Apt {data['apt']}) with rent ₹{rent}.")
+                
+                # Check for existing phone number first
+                cur = database.execute_query(conn, "SELECT * FROM tenants WHERE phone_number = ?", (data['phone'],))
+                existing = cur.fetchone()
+                
+                if existing:
+                     resp.message(f"❌ **Error:** Tenant with phone {data['phone']} already exists (Name: {existing['name']}).")
+                else:
+                    # Save to DB
+                    database.execute_query(conn,
+                        "INSERT INTO tenants (name, phone_number, apartment_number, rent_amount, role) VALUES (?, ?, ?, ?, 'TENANT')",
+                        (data['name'], data['phone'], data['apt'], rent)
+                    )
+                    conn.commit()
+                    resp.message(f"✅ **Success!**\nAdded {data['name']} (Apt {data['apt']}) with rent ₹{rent}.")
             except ValueError:
                 resp.message("❌ Invalid amount. Please enter a number (e.g., 15000).")
                 return # Keep state, retry
