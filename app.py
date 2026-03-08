@@ -79,25 +79,24 @@ def whatsapp_reply():
             print("DEBUG: Executing SETUP logic")
             try:
                 parts = incoming_msg.split() # Split by space
-                # Format: SETUP Name Apt Rent
-                # E.g.: SETUP Shiva 101 15000
-                if len(parts) >= 4:
+                # Format: SETUP Name
+                # E.g.: SETUP Shiva
+                if len(parts) >= 2:
                     new_name = parts[1]
-                    new_apt = parts[2]
-                    new_rent = float(parts[3])
                     
                     # Insert as MANAGER (UPSERT to handle existing tenants promoting themselves)
                     database.execute_query(conn,
                         """INSERT INTO tenants (name, phone_number, apartment_number, rent_amount, role) 
-                           VALUES (?, ?, ?, ?, 'MANAGER')
+                           VALUES (?, ?, 'OFFICE', 0, 'MANAGER')
                            ON CONFLICT (phone_number) 
-                           DO UPDATE SET role = 'MANAGER', name = EXCLUDED.name, apartment_number = EXCLUDED.apartment_number, rent_amount = EXCLUDED.rent_amount""",
-                        (new_name, sender_phone, new_apt, new_rent)
+                           DO UPDATE SET role = 'MANAGER', name = EXCLUDED.name, apartment_number = 'OFFICE', rent_amount = 0""",
+                        (new_name, sender_phone)
                     )
                     conn.commit()
                     resp.message(f"✅ **Welcome Manager {new_name}!**\nSystem initialized. You can now use Manager commands.")
                 else:
-                    resp.message("❌ Format: `SETUP <Name> <Apt> <Rent>`\nExample: `SETUP Shiva 101 15000`")
+                    # Simplify format for setup
+                    resp.message("❌ Format: `SETUP <Name>`\nExample: `SETUP Shiva`")
             except Exception as e:
                 print(f"DEBUG: Setup Error: {e}")
                 resp.message(f"❌ Error during setup: {str(e)}")
