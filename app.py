@@ -325,6 +325,26 @@ def handle_manager(resp, msg, conn, sender_phone, bot_whatsapp_id):
 
     # --- STANDARD COMMANDS ---
 
+    if msg_lower == 'cleanup managers':
+        # Fix legacy manager data
+        try:
+            database.execute_query(conn, 
+                "UPDATE tenants SET apartment_number = 'OFFICE', rent_amount = 0 WHERE role = 'MANAGER'"
+            )
+            count = conn.total_changes # SQLite only (for Postgres use rowcount if available)
+            conn.commit()
+            
+            # Handling rowcount safely across drivers
+            if hasattr(conn, 'total_changes'): 
+                changes = conn.total_changes
+            else:
+                changes = "some" # Postgres cursor.rowcount is on cursor, not conn
+            
+            resp.message(f"✅ **Cleanup Complete:** Managers are now set to OFFICE/0 rent.")
+        except Exception as e:
+            resp.message(f"❌ Cleanup failed: {str(e)}")
+        return
+
     if msg_lower == 'pending approvals' or msg_lower == 'pending':
         cur = database.execute_query(conn, 
             """SELECT t.id, t.amount, t.type, ten.name 
